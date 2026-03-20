@@ -526,7 +526,36 @@ app.post('/api/meetings/check', async (req, res) => {
     
     storage.clearActiveMeeting();
     
-    // Send webhook to agent with delivery config
+    // Handle delivery based on config
+    let deliveryResult = { delivered: false };
+    const deliveryConfig = config.delivery;
+    
+    if (deliveryConfig?.mode && deliveryConfig.mode !== 'none' && deliveryConfig?.channels?.length > 0) {
+      // Generate summary if needed
+      let summary = null;
+      if (deliveryConfig.mode === 'summary' || deliveryConfig.mode === 'both') {
+        const summarizer = new MeetingSummarizer(deliveryConfig.summaryOptions || {});
+        const prompt = summarizer.generatePrompt(meeting, transcript);
+        
+        // Store the prompt for the polling agent to process
+        const state = storage.getState();
+        state.pendingDelivery = {
+          meeting,
+          transcript,
+          transcriptPath,
+          summarizationPrompt: prompt,
+          deliveryConfig,
+          createdAt: new Date().toISOString()
+        };
+        storage.saveState(state);
+      } else {
+        // Transcript only - can deliver directly
+        const delivery = new DeliveryManager(deliveryConfig);
+        deliveryResult = await delivery.deliver(meeting, transcript, null);
+      }
+    }
+    
+    // Also send webhook if configured (for external integrations)
     let webhookSent = false;
     if (config.webhook?.onMeetingEnd) {
       webhookSent = await sendAgentWebhook(
@@ -547,8 +576,10 @@ app.post('/api/meetings/check', async (req, res) => {
         attendees: meeting.attendees
       },
       delivery: {
-        mode: config.delivery?.mode || 'none',
-        channels: (config.delivery?.channels || []).length
+        mode: deliveryConfig?.mode || 'none',
+        channels: (deliveryConfig?.channels || []).length,
+        result: deliveryResult,
+        pendingSummary: deliveryConfig?.mode === 'summary' || deliveryConfig?.mode === 'both'
       },
       webhookSent
     });
@@ -698,6 +729,59 @@ app.post('/api/deliver/:botId', async (req, res) => {
     mode: deliveryConfig.mode,
     channels: deliveryConfig.channels.filter(c => c.enabled),
     summary: summary || null
+  });
+});
+
+/**
+ * Get pending delivery that needs agent processing (summary generation)
+ */
+app.get('/api/delivery/pending', (req, res) => {
+  const state = storage.getState();
+  
+  if (!state.pendingDelivery) {
+    return res.json({ pending: false });
+  }
+  
+  res.json({
+    pending: true,
+    meeting: state.pendingDelivery.meeting,
+    summarizationPrompt: state.pendingDelivery.summarizationPrompt,
+    channels: state.pendingDelivery.deliveryConfig?.channels || [],
+    createdAt: state.pendingDelivery.createdAt
+  });
+});
+
+/**
+ * Complete pending delivery with generated summary
+ */
+app.post('/api/delivery/complete', async (req, res) => {
+  const { summary } = req.body;
+  const state = storage.getState();
+  
+  if (!state.pendingDelivery) {
+    return res.status(400).json({ error: 'No pending delivery' });
+  }
+  
+  const { meeting, transcript, deliveryConfig } = state.pendingDelivery;
+  
+  // Parse summary if it's a string (raw AI response)
+  let parsedSummary = summary;
+  if (typeof summary === 'string') {
+    const summarizer = new MeetingSummarizer(deliveryConfig?.summaryOptions || {});
+    parsedSummary = summarizer.parseResponse(summary);
+  }
+  
+  // Deliver
+  const delivery = new DeliveryManager(deliveryConfig);
+  const result = await delivery.deliver(meeting, transcript, parsedSummary);
+  
+  // Clear pending
+  delete state.pendingDelivery;
+  storage.saveState(state);
+  
+  res.json({
+    success: true,
+    deliveryResult: result
   });
 });
 
