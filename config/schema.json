@@ -254,8 +254,8 @@
               "type": {
                 "type": "string",
                 "title": "Channel Type",
-                "enum": ["email", "whatsapp", "teams", "slack", "webhook"],
-                "description": "Delivery channel"
+                "enum": ["email", "webhook"],
+                "description": "Delivery channel (email or webhook)"
               },
               "enabled": {
                 "type": "boolean",
@@ -265,7 +265,7 @@
               "target": {
                 "type": "string",
                 "title": "Target",
-                "description": "Email address, phone number, Teams chat ID, Slack channel, or webhook URL"
+                "description": "Email address or webhook URL"
               },
               "agent": {
                 "type": "string",
