@@ -44,6 +44,99 @@ app.use((req, res, next) => {
   next();
 });
 
+// ============ SETUP INSTRUCTIONS ============
+
+/**
+ * GET /api/setup
+ * Returns setup instructions for the agent
+ * Called on first start or when agent needs configuration guidance
+ */
+app.get('/api/setup', async (req, res) => {
+  const fs = require('fs');
+  const setupPath = path.join(__dirname, '..', 'docs', 'AGENT_SETUP.md');
+  
+  try {
+    const markdown = fs.readFileSync(setupPath, 'utf8');
+    
+    // Also include current status for context
+    const tokenCheck = await tokenClient.checkRequiredTokens();
+    const config = configManager.load();
+    
+    res.json({
+      instructions: markdown,
+      currentStatus: {
+        tokensConfigured: tokenCheck.allConfigured,
+        missingTokens: tokenCheck.tokens.filter(t => !t.hasValue).map(t => t.service),
+        deliveryConfigured: !!(config.delivery?.channels?.length > 0),
+        calendarConfigured: !!(config.calendar?.endpoint),
+        botName: config.bot?.name || 'Not set'
+      },
+      quickStart: {
+        step1: 'Register Recall.ai token in token-manager',
+        step2: 'Configure delivery email via PUT /api/delivery',
+        step3: 'Install cron jobs from GET /api/cron/jobs',
+        step4: 'Test with POST /api/meetings/join'
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Setup instructions not found', details: error.message });
+  }
+});
+
+/**
+ * POST /api/setup/notify
+ * Sends setup instructions to the OpenClaw agent
+ * Called automatically on first start or manually when needed
+ */
+app.post('/api/setup/notify', async (req, res) => {
+  const { gatewayUrl = 'http://localhost:18789', message } = req.body;
+  
+  try {
+    const fs = require('fs');
+    const setupPath = path.join(__dirname, '..', 'docs', 'AGENT_SETUP.md');
+    const markdown = fs.readFileSync(setupPath, 'utf8');
+    
+    // Get current status
+    const tokenCheck = await tokenClient.checkRequiredTokens();
+    const config = configManager.load();
+    
+    const status = [];
+    if (!tokenCheck.allConfigured) {
+      status.push(`❌ Missing tokens: ${tokenCheck.tokens.filter(t => !t.hasValue).map(t => t.service).join(', ')}`);
+    } else {
+      status.push('✅ All required tokens configured');
+    }
+    
+    if (!config.delivery?.channels?.some(c => c.enabled && c.target)) {
+      status.push('❌ Delivery not configured (no email target)');
+    } else {
+      status.push(`✅ Delivery configured: ${config.delivery.mode} to ${config.delivery.channels[0]?.target}`);
+    }
+    
+    const notification = `
+# 🎤 Agent Meeting Skill Installed
+
+**Service:** http://localhost:${PORT}
+**Status:**
+${status.join('\n')}
+
+${message || 'Please review the setup instructions and complete any missing configuration.'}
+
+---
+
+${markdown}
+`;
+    
+    res.json({
+      success: true,
+      notification: notification,
+      instructions: 'Send this to the agent via your preferred method (WhatsApp, Teams, etc.)'
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ============ STATUS ============
 
 app.get('/api/status', async (req, res) => {
@@ -960,4 +1053,49 @@ app.listen(PORT, () => {
   console.log(`  PUT  /api/delivery         - Update delivery configuration`);
   console.log(`  POST /api/deliver/:botId   - Deliver transcript/summary`);
   console.log(`  GET  /api/cron             - Get cron job definitions`);
+  console.log(`  GET  /api/setup            - Get setup instructions for agent`);
+  console.log(`  POST /api/setup/notify     - Generate setup notification`);
+  
+  // Check if first run (no config or missing tokens)
+  checkFirstRun();
 });
+
+/**
+ * Check if this is first run and log setup instructions
+ */
+async function checkFirstRun() {
+  const fs = require('fs');
+  const stateFile = path.join(DATA_DIR, 'state.json');
+  const setupMarker = path.join(DATA_DIR, '.setup-complete');
+  
+  // Skip if already set up
+  if (fs.existsSync(setupMarker)) {
+    return;
+  }
+  
+  // Check token status
+  const tokenCheck = await tokenClient.checkRequiredTokens();
+  const config = configManager.load();
+  
+  const issues = [];
+  
+  if (!tokenCheck.allConfigured) {
+    issues.push(`Missing tokens: ${tokenCheck.tokens.filter(t => !t.hasValue).map(t => t.service).join(', ')}`);
+  }
+  
+  if (!config.delivery?.channels?.some(c => c.enabled && c.target)) {
+    issues.push('Delivery email not configured');
+  }
+  
+  if (issues.length > 0) {
+    console.log('\n' + '='.repeat(60));
+    console.log('⚠️  SETUP REQUIRED');
+    console.log('='.repeat(60));
+    issues.forEach(i => console.log(`  ❌ ${i}`));
+    console.log('\nGet setup instructions: GET http://localhost:' + PORT + '/api/setup');
+    console.log('='.repeat(60) + '\n');
+  } else {
+    console.log('\n✅ All configured! Creating setup marker...');
+    fs.writeFileSync(setupMarker, new Date().toISOString());
+  }
+}
