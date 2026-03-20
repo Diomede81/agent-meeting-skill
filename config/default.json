@@ -39,6 +39,6 @@
     "calendarPollEnabled": true,
     "calendarPollIntervalMs": 300000,
     "meetingCheckEnabled": true,
-    "meetingCheckIntervalMs": 30000
+    "meetingCheckIntervalMs": 60000
   }
 }

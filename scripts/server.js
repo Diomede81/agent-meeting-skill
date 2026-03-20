@@ -494,23 +494,24 @@ app.post('/api/meetings/check', async (req, res) => {
   
   // Check if meeting completed
   if (recall.isComplete(bot)) {
-    // Fetch and save transcript
+    // Fetch transcript from Recall.ai
     let transcript = null;
     let transcriptPath = null;
     
     try {
-      if (bot.transcript?.url) {
-        const transcriptRes = await fetch(bot.transcript.url);
-        transcript = await transcriptRes.json();
-      }
+      transcript = await recall.getTranscript(active.botId);
     } catch (e) {
       console.error('Failed to fetch transcript:', e.message);
     }
     
+    // Get meeting title from recording metadata
+    const meetingTitle = recall.getMeetingTitle(bot) || active.title;
+    
     const meeting = {
       ...active,
+      title: meetingTitle,
       duration: calculateDuration(bot.status_changes),
-      attendees: []
+      attendees: extractAttendees(transcript)
     };
     
     if (transcript) {
@@ -559,6 +560,20 @@ function calculateDuration(statusChanges) {
     return Math.round((new Date(done.created_at) - new Date(inCall.created_at)) / 1000);
   }
   return null;
+}
+
+function extractAttendees(transcript) {
+  if (!transcript || !Array.isArray(transcript)) return [];
+  const seen = new Set();
+  return transcript
+    .filter(entry => entry.participant?.name && !seen.has(entry.participant.name))
+    .map(entry => {
+      seen.add(entry.participant.name);
+      return {
+        name: entry.participant.name,
+        isHost: entry.participant.is_host || false
+      };
+    });
 }
 
 async function sendAgentWebhook(webhookConfig, meeting, transcript, transcriptPath) {

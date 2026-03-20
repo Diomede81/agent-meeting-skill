@@ -198,9 +198,9 @@
         "meetingCheckIntervalMs": {
           "type": "integer",
           "title": "Meeting Check Interval (ms)",
-          "description": "How often to check active meeting status (default: 30 seconds)",
-          "default": 30000,
-          "minimum": 10000,
+          "description": "How often to check active meeting status (default: 60 seconds)",
+          "default": 60000,
+          "minimum": 30000,
           "maximum": 300000
         }
       }
