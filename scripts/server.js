@@ -20,6 +20,7 @@ const { RecallClient } = require('../lib/recall-client');
 const { StorageManager } = require('../lib/storage');
 const { DeliveryManager } = require('../lib/delivery');
 const { MeetingSummarizer } = require('../lib/summarizer');
+const { AIClient } = require('../lib/ai-client');
 
 
 // Initialize
@@ -623,31 +624,39 @@ app.post('/api/meetings/check', async (req, res) => {
     
     // Handle delivery based on config
     let deliveryResult = { delivered: false };
+    let summary = null;
     const deliveryConfig = config.delivery;
     
     if (deliveryConfig?.mode && deliveryConfig.mode !== 'none' && deliveryConfig?.channels?.length > 0) {
-      // Generate summary if needed
-      let summary = null;
+      // Generate summary using local AI if needed
       if (deliveryConfig.mode === 'summary' || deliveryConfig.mode === 'both') {
         const summarizer = new MeetingSummarizer(deliveryConfig.summaryOptions || {});
         const prompt = summarizer.generatePrompt(meeting, transcript);
         
-        // Store the prompt for the polling agent to process
-        const state = storage.getState();
-        state.pendingDelivery = {
-          meeting,
-          transcript,
-          transcriptPath,
-          summarizationPrompt: prompt,
-          deliveryConfig,
-          createdAt: new Date().toISOString()
-        };
-        storage.saveState(state);
-      } else {
-        // Transcript only - can deliver directly
-        const delivery = new DeliveryManager(deliveryConfig);
-        deliveryResult = await delivery.deliver(meeting, transcript, null);
+        try {
+          // Use AIClient to generate summary directly (no cron dependency)
+          const aiClient = new AIClient({ 
+            gatewayUrl: config.cron?.gatewayUrl || 'http://localhost:18789',
+            timeout: 120000 // 2 minutes for summary generation
+          });
+          
+          console.log('Generating meeting summary via AI...');
+          summary = await aiClient.generateSummary(prompt);
+          console.log('Summary generated:', summary.overview?.substring(0, 100) + '...');
+          
+          if (summary._parseError) {
+            console.warn('AI response was not valid JSON, using raw response');
+          }
+        } catch (aiError) {
+          console.error('AI summary generation failed:', aiError.message);
+          // Continue without summary - will send transcript only
+          summary = null;
+        }
       }
+      
+      // Deliver immediately with summary (or just transcript if summary failed)
+      const delivery = new DeliveryManager(deliveryConfig);
+      deliveryResult = await delivery.deliver(meeting, transcript, summary);
     }
     
     // Also send webhook if configured (for external integrations)
@@ -674,7 +683,7 @@ app.post('/api/meetings/check', async (req, res) => {
         mode: deliveryConfig?.mode || 'none',
         channels: (deliveryConfig?.channels || []).length,
         result: deliveryResult,
-        pendingSummary: deliveryConfig?.mode === 'summary' || deliveryConfig?.mode === 'both'
+        summaryGenerated: !!summary
       },
       webhookSent
     });
