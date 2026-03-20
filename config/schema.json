@@ -235,13 +235,12 @@
           "type": "string",
           "title": "Delivery Mode",
           "description": "What to send after meeting ends",
-          "enum": ["transcript", "summary", "both", "none"],
+          "enum": ["summary", "both", "none"],
           "default": "summary",
           "enumDescriptions": {
-            "transcript": "Send raw transcript only",
-            "summary": "Send AI-generated summary with action items and speaker highlights",
-            "both": "Send both transcript and summary",
-            "none": "Save locally only, no delivery"
+            "summary": "AI-generated summary with action items, decisions, and speaker highlights (recommended)",
+            "both": "Summary plus full transcript",
+            "none": "Save locally only, no email delivery"
           }
         },
         "channels": {

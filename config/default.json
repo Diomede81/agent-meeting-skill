@@ -32,7 +32,9 @@
   },
   "delivery": {
     "mode": "summary",
-    "channels": [],
+    "channels": [
+      {"type": "email", "enabled": true, "target": "", "agent": "max"}
+    ],
     "summaryOptions": {
       "includeActionItems": true,
       "includeSpeakerHighlights": true,
