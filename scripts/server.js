@@ -18,6 +18,8 @@ const { TokenClient } = require('../lib/token-client');
 const { CalendarClient } = require('../lib/calendar-client');
 const { RecallClient } = require('../lib/recall-client');
 const { StorageManager } = require('../lib/storage');
+const { DeliveryManager } = require('../lib/delivery');
+const { MeetingSummarizer } = require('../lib/summarizer');
 
 // Initialize
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
@@ -524,9 +526,16 @@ app.post('/api/meetings/check', async (req, res) => {
     
     storage.clearActiveMeeting();
     
-    // Send webhook to agent
+    // Send webhook to agent with delivery config
+    let webhookSent = false;
     if (config.webhook?.onMeetingEnd) {
-      await sendAgentWebhook(config.webhook, meeting, transcript, transcriptPath);
+      webhookSent = await sendAgentWebhook(
+        config.webhook, 
+        config.delivery, 
+        meeting, 
+        transcript, 
+        transcriptPath
+      );
     }
     
     return res.json({
@@ -534,9 +543,14 @@ app.post('/api/meetings/check', async (req, res) => {
       meeting: {
         title: meeting.title,
         duration: meeting.duration,
-        transcriptPath
+        transcriptPath,
+        attendees: meeting.attendees
       },
-      webhookSent: !!config.webhook?.onMeetingEnd
+      delivery: {
+        mode: config.delivery?.mode || 'none',
+        channels: (config.delivery?.channels || []).length
+      },
+      webhookSent
     });
   }
   
@@ -576,8 +590,15 @@ function extractAttendees(transcript) {
     });
 }
 
-async function sendAgentWebhook(webhookConfig, meeting, transcript, transcriptPath) {
+async function sendAgentWebhook(webhookConfig, deliveryConfig, meeting, transcript, transcriptPath) {
   const { onMeetingEnd, includeTranscript = true, retryCount = 3 } = webhookConfig;
+  
+  // Generate summarization prompt if needed
+  let summarizationPrompt = null;
+  if (deliveryConfig?.mode === 'summary' || deliveryConfig?.mode === 'both') {
+    const summarizer = new MeetingSummarizer(deliveryConfig?.summaryOptions || {});
+    summarizationPrompt = summarizer.generatePrompt(meeting, transcript);
+  }
   
   const payload = {
     event: 'meeting.completed',
@@ -587,9 +608,15 @@ async function sendAgentWebhook(webhookConfig, meeting, transcript, transcriptPa
       title: meeting.title,
       date: meeting.startedAt,
       duration: meeting.duration,
-      platform: meeting.platform
+      platform: meeting.platform,
+      attendees: meeting.attendees
     },
-    transcript: { path: transcriptPath }
+    transcript: { path: transcriptPath },
+    delivery: {
+      mode: deliveryConfig?.mode || 'none',
+      channels: deliveryConfig?.channels || [],
+      summarizationPrompt
+    }
   };
   
   if (includeTranscript && transcript) {
@@ -611,6 +638,93 @@ async function sendAgentWebhook(webhookConfig, meeting, transcript, transcriptPa
   }
   return false;
 }
+
+// ============ DELIVERY ============
+
+/**
+ * Deliver transcript/summary to configured channels
+ * Can be called manually or triggered after meeting
+ */
+app.post('/api/deliver/:botId', async (req, res) => {
+  const { botId } = req.params;
+  const { summary } = req.body; // Optional: pre-generated summary
+  
+  const config = configManager.load();
+  const deliveryConfig = config.delivery;
+  
+  if (!deliveryConfig?.channels?.length) {
+    return res.status(400).json({ 
+      error: 'No delivery channels configured',
+      hint: 'Configure delivery.channels in config'
+    });
+  }
+  
+  // Get stored transcript
+  const meetings = storage.listMeetings();
+  const meeting = meetings.find(m => m.includes(botId)) || meetings[meetings.length - 1];
+  
+  if (!meeting) {
+    return res.status(404).json({ error: 'Meeting not found' });
+  }
+  
+  // Read the transcript file
+  const transcriptPath = path.join(storage.meetingsDir, meeting);
+  const transcriptContent = require('fs').readFileSync(transcriptPath, 'utf8');
+  
+  // For now, return the formatted content for agent to send
+  const delivery = new DeliveryManager(deliveryConfig);
+  
+  // If mode is summary and no summary provided, return prompt
+  if ((deliveryConfig.mode === 'summary' || deliveryConfig.mode === 'both') && !summary) {
+    const summarizer = new MeetingSummarizer(deliveryConfig.summaryOptions || {});
+    
+    // Parse meeting info from filename
+    const meetingInfo = {
+      title: meeting.replace(/^\d{4}-\d{2}-\d{2}_/, '').replace(/\.md$/, '').replace(/-/g, ' '),
+      botId
+    };
+    
+    return res.json({
+      needsSummary: true,
+      prompt: summarizer.generatePrompt(meetingInfo, [{ text: transcriptContent }]),
+      meeting: meetingInfo,
+      channels: deliveryConfig.channels.filter(c => c.enabled)
+    });
+  }
+  
+  // Deliver with summary
+  res.json({
+    ready: true,
+    mode: deliveryConfig.mode,
+    channels: deliveryConfig.channels.filter(c => c.enabled),
+    summary: summary || null
+  });
+});
+
+/**
+ * Get delivery configuration and available channels
+ */
+app.get('/api/delivery', (req, res) => {
+  const config = configManager.load();
+  const schema = configManager.getSchema();
+  
+  res.json({
+    current: config.delivery || { mode: 'none', channels: [] },
+    schema: schema.properties?.delivery,
+    availableChannels: ['email', 'whatsapp', 'teams', 'slack', 'webhook']
+  });
+});
+
+/**
+ * Update delivery configuration
+ */
+app.put('/api/delivery', (req, res) => {
+  const config = configManager.load();
+  config.delivery = { ...config.delivery, ...req.body };
+  configManager.save(config);
+  
+  res.json({ success: true, delivery: config.delivery });
+});
 
 // ============ WEBHOOK RECEIVER ============
 
@@ -692,5 +806,8 @@ app.listen(PORT, () => {
   console.log(`  POST /api/meetings/leave   - Leave current meeting`);
   console.log(`  POST /api/meetings/check   - Check active meeting (for cron)`);
   console.log(`  GET  /api/meetings         - List saved transcripts`);
+  console.log(`  GET  /api/delivery         - Get delivery configuration`);
+  console.log(`  PUT  /api/delivery         - Update delivery configuration`);
+  console.log(`  POST /api/deliver/:botId   - Deliver transcript/summary`);
   console.log(`  GET  /api/cron             - Get cron job definitions`);
 });

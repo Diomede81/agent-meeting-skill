@@ -225,6 +225,96 @@
           "default": true
         }
       }
+    },
+    "delivery": {
+      "type": "object",
+      "title": "Transcript Delivery",
+      "description": "How and where to deliver meeting transcripts after completion",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "title": "Delivery Mode",
+          "description": "What to send after meeting ends",
+          "enum": ["transcript", "summary", "both", "none"],
+          "default": "summary",
+          "enumDescriptions": {
+            "transcript": "Send raw transcript only",
+            "summary": "Send AI-generated summary with action items and speaker highlights",
+            "both": "Send both transcript and summary",
+            "none": "Save locally only, no delivery"
+          }
+        },
+        "channels": {
+          "type": "array",
+          "title": "Delivery Channels",
+          "description": "Where to send the transcript/summary",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "title": "Channel Type",
+                "enum": ["email", "whatsapp", "teams", "slack", "webhook"],
+                "description": "Delivery channel"
+              },
+              "enabled": {
+                "type": "boolean",
+                "title": "Enabled",
+                "default": true
+              },
+              "target": {
+                "type": "string",
+                "title": "Target",
+                "description": "Email address, phone number, Teams chat ID, Slack channel, or webhook URL"
+              },
+              "agent": {
+                "type": "string",
+                "title": "Agent/Account",
+                "description": "Agent account to send from (for email/teams)"
+              }
+            },
+            "required": ["type", "target"]
+          }
+        },
+        "summaryOptions": {
+          "type": "object",
+          "title": "Summary Options",
+          "description": "Configure what to include in the AI summary",
+          "properties": {
+            "includeActionItems": {
+              "type": "boolean",
+              "title": "Include Action Items",
+              "description": "Extract and list action items with assignees",
+              "default": true
+            },
+            "includeSpeakerHighlights": {
+              "type": "boolean",
+              "title": "Include Speaker Highlights",
+              "description": "Main points per speaker",
+              "default": true
+            },
+            "includeDecisions": {
+              "type": "boolean",
+              "title": "Include Decisions",
+              "description": "Key decisions made during the meeting",
+              "default": true
+            },
+            "includeFollowUps": {
+              "type": "boolean",
+              "title": "Include Follow-ups",
+              "description": "Items that need follow-up",
+              "default": true
+            },
+            "maxLength": {
+              "type": "integer",
+              "title": "Max Summary Length",
+              "description": "Maximum characters for summary (0 = no limit)",
+              "default": 0,
+              "minimum": 0
+            }
+          }
+        }
+      }
     }
   },
   "required": ["bot", "calendar"]
