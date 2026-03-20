@@ -95,14 +95,13 @@ The agent receives this webhook and processes with its own model for:
 - Task assignment
 - Follow-up scheduling
 
-### Credentials
+### Tokens (via token-manager)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | /api/credentials | List configured credentials (masked) |
-| POST | /api/credentials | Add/update a credential |
-| DELETE | /api/credentials/:name | Remove a credential |
-| POST | /api/credentials/test/:name | Test a credential |
+| GET | /api/tokens | List required tokens and their status |
+| GET | /api/tokens/verify | Verify all required tokens are configured |
+| POST | /api/tokens/test/:service | Test a specific token |
 
 ## Configuration Schema
 
@@ -162,29 +161,60 @@ The agent receives this webhook and processes with its own model for:
 
 This separation keeps the skill focused and lets the agent use its full context.
 
-## Credential Management
+## Credential Management (via token-manager-skill)
 
-Credentials stored locally in skill's `data/` directory (encrypted):
+**This skill does NOT store credentials itself.** All API keys are managed via the centralized `token-manager-skill`.
 
-| Credential | Required For |
-|------------|--------------|
-| `recall_api_key` | Recall.ai meeting bot |
-| `calendar_token` | Calendar API access (if not using middleware) |
-| `openai_api_key` | Summarization (optional) |
+### Required Tokens
+
+Register these in token-manager before using this skill:
+
+| Service | Location | Purpose |
+|---------|----------|---------|
+| `Recall.ai` | `~/.secrets/recall-api-key.txt` | Meeting bot API |
+
+### Setup
+
+1. Store the actual secret:
+   ```bash
+   echo "your-recall-api-key" > ~/.secrets/recall-api-key.txt
+   chmod 600 ~/.secrets/recall-api-key.txt
+   ```
+
+2. Register in token-manager:
+   ```bash
+   curl -X POST http://localhost:3021/api/tokens \
+     -H "Content-Type: application/json" \
+     -d '{
+       "service": "Recall.ai",
+       "name": "API Key",
+       "category": "api",
+       "locationType": "file",
+       "location": "~/.secrets/recall-api-key.txt",
+       "notes": "Used by agent-meeting-skill"
+     }'
+   ```
+
+3. Verify:
+   ```bash
+   curl http://localhost:3030/api/tokens/verify
+   ```
 
 ## Data Storage
 
-All data stored within skill directory:
+Skill data stored within skill directory, credentials via token-manager:
 
 ```
 agent-meeting-skill/
 ├── data/
-│   ├── config.json       # User configuration
-│   ├── credentials.enc   # Encrypted credentials
+│   ├── config.json       # Skill configuration
 │   ├── state.json        # Current state (active meeting, etc.)
 │   └── meetings/         # Saved transcripts
 │       ├── 2026-03-20_weekly-standup.md
 │       └── 2026-03-21_project-review.md
+
+~/.secrets/                # Managed by token-manager
+└── recall-api-key.txt    # Recall.ai API key
 ```
 
 ## Installation
@@ -209,6 +239,8 @@ npm start
 |----------|----------|-------------|
 | PORT | No | API server port (default: 3030) |
 | DATA_DIR | No | Override data directory |
+| TOKEN_MANAGER_URL | No | Token manager API URL (default: http://localhost:3021) |
+| SECRETS_DIR | No | Override secrets directory (default: ~/.secrets) |
 
 ## Agent Integration
 
@@ -243,20 +275,22 @@ agent-meeting-skill/
 ├── README.md             # Setup guide
 ├── package.json
 ├── config/
-│   └── schema.json       # JSON Schema for config
+│   ├── default.json      # Default configuration
+│   └── schema.json       # JSON Schema for UI
 ├── scripts/
 │   ├── server.js         # API server (main entry)
-│   ├── calendar.js       # Calendar integration
-│   ├── meeting-bot.js    # Meeting join/leave
-│   └── transcript.js     # Transcript processing
+│   ├── calendar-poll.js  # Calendar polling, auto-join
+│   ├── monitor.js        # Meeting status monitoring
+│   └── meeting-complete.js # Handle meeting end
 ├── lib/
 │   ├── config-manager.js # Config CRUD
-│   ├── credential-store.js # Encrypted credential storage
+│   ├── token-client.js   # Token-manager integration
 │   ├── recall-client.js  # Recall.ai API
+│   ├── calendar-client.js # Calendar API
 │   └── storage.js        # Data persistence
 ├── data/                 # Runtime data (gitignored)
 │   ├── config.json
-│   ├── credentials.enc
+│   ├── state.json
 │   └── meetings/
 └── templates/
     └── transcript.md     # Transcript template
@@ -264,15 +298,16 @@ agent-meeting-skill/
 
 ## Status Checklist
 
-- [ ] API server with Express
-- [ ] Config management (CRUD + schema)
-- [ ] Credential storage (encrypted)
-- [ ] Calendar integration (pluggable sources)
-- [ ] Recall.ai client
-- [ ] Meeting join logic
-- [ ] Chat message sending
-- [ ] Transcription streaming
-- [ ] Meeting end detection
-- [ ] Transcript saving
-- [ ] Live transcript SSE
-- [ ] Webhook notification to agent
+- [x] API server with Express
+- [x] Config management (CRUD + schema)
+- [x] Token-manager integration (replaces local credential storage)
+- [x] Calendar integration (Microsoft Middleware)
+- [x] Recall.ai client
+- [x] Meeting join logic
+- [x] Chat message sending
+- [x] Meeting end detection
+- [x] Transcript saving
+- [x] Webhook notification to agent
+- [ ] Live transcript SSE (real-time streaming)
+- [ ] Google Calendar integration
+- [ ] iCal integration

@@ -14,7 +14,7 @@ const express = require('express');
 const path = require('path');
 
 const { ConfigManager } = require('../lib/config-manager');
-const { CredentialStore } = require('../lib/credential-store');
+const { TokenClient } = require('../lib/token-client');
 const { CalendarClient } = require('../lib/calendar-client');
 const { RecallClient } = require('../lib/recall-client');
 const { StorageManager } = require('../lib/storage');
@@ -22,9 +22,10 @@ const { StorageManager } = require('../lib/storage');
 // Initialize
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const PORT = process.env.PORT || 3030;
+const TOKEN_MANAGER_URL = process.env.TOKEN_MANAGER_URL || 'http://localhost:3021';
 
 const configManager = new ConfigManager(DATA_DIR);
-const credentialStore = new CredentialStore(DATA_DIR);
+const tokenClient = new TokenClient(TOKEN_MANAGER_URL);
 const storage = new StorageManager(DATA_DIR);
 
 const app = express();
@@ -41,15 +42,17 @@ app.use((req, res, next) => {
 
 // ============ STATUS ============
 
-app.get('/api/status', (req, res) => {
+app.get('/api/status', async (req, res) => {
   const config = configManager.load();
-  const hasRecallKey = credentialStore.has('recall_api_key');
+  const tokenCheck = await tokenClient.checkRequiredTokens();
   const activeMeeting = storage.getActiveMeeting();
   
   res.json({
     status: 'ok',
     version: '1.0.0',
-    configured: hasRecallKey,
+    configured: tokenCheck.allConfigured,
+    tokens: tokenCheck.tokens,
+    tokenManagerUrl: TOKEN_MANAGER_URL,
     activeMeeting: activeMeeting ? {
       botId: activeMeeting.botId,
       title: activeMeeting.title,
@@ -100,30 +103,26 @@ app.post('/api/config/validate', (req, res) => {
   res.json(validation);
 });
 
-// ============ CREDENTIALS ============
+// ============ TOKENS (via token-manager-skill) ============
 
-app.get('/api/credentials', (req, res) => {
-  const credentials = credentialStore.list();
-  res.json({ credentials });
-});
-
-app.post('/api/credentials', (req, res) => {
-  const { name, value } = req.body;
-  if (!name || !value) {
-    return res.status(400).json({ error: 'name and value required' });
-  }
+app.get('/api/tokens', async (req, res) => {
+  const required = TokenClient.getRequiredTokens();
+  const check = await tokenClient.checkRequiredTokens();
   
-  credentialStore.set(name, value);
-  res.json({ success: true, message: `Credential '${name}' saved` });
+  res.json({
+    tokenManagerUrl: TOKEN_MANAGER_URL,
+    required,
+    status: check
+  });
 });
 
-app.delete('/api/credentials/:name', (req, res) => {
-  credentialStore.delete(req.params.name);
-  res.json({ success: true, message: `Credential '${req.params.name}' deleted` });
+app.get('/api/tokens/verify', async (req, res) => {
+  const check = await tokenClient.checkRequiredTokens();
+  res.json(check);
 });
 
-app.post('/api/credentials/test/:name', async (req, res) => {
-  const result = await credentialStore.test(req.params.name);
+app.post('/api/tokens/test/:service', async (req, res) => {
+  const result = await tokenClient.verify(req.params.service);
   res.json(result);
 });
 
@@ -167,7 +166,7 @@ app.get('/api/meetings/active', async (req, res) => {
   
   // Get latest status from Recall
   try {
-    const apiKey = credentialStore.get('recall_api_key');
+    const apiKey = await tokenClient.get('Recall.ai');
     if (apiKey) {
       const config = configManager.load();
       const recall = new RecallClient({ apiKey, region: config.transcription?.region });
@@ -222,10 +221,13 @@ app.post('/api/meetings/join', async (req, res) => {
     });
   }
   
-  // Get credentials and config
-  const apiKey = credentialStore.get('recall_api_key');
+  // Get credentials via token-manager
+  const apiKey = await tokenClient.get('Recall.ai');
   if (!apiKey) {
-    return res.status(400).json({ error: 'Recall API key not configured' });
+    return res.status(400).json({ 
+      error: 'Recall.ai API key not configured',
+      help: 'Add token via token-manager: POST http://localhost:3021/api/tokens with service "Recall.ai" and location "~/.secrets/recall-api-key.txt"'
+    });
   }
   
   const config = configManager.load();
@@ -276,7 +278,7 @@ app.post('/api/meetings/leave', async (req, res) => {
     return res.status(400).json({ error: 'No active meeting' });
   }
   
-  const apiKey = credentialStore.get('recall_api_key');
+  const apiKey = await tokenClient.get('Recall.ai');
   if (!apiKey) {
     storage.clearActiveMeeting();
     return res.json({ success: true, message: 'Cleared local state (no API key)' });
@@ -301,9 +303,9 @@ app.post('/api/meetings/leave', async (req, res) => {
 // ============ BOT STATUS ============
 
 app.get('/api/bot/:botId', async (req, res) => {
-  const apiKey = credentialStore.get('recall_api_key');
+  const apiKey = await tokenClient.get('Recall.ai');
   if (!apiKey) {
-    return res.status(400).json({ error: 'Recall API key not configured' });
+    return res.status(400).json({ error: 'Recall.ai API key not configured' });
   }
   
   const config = configManager.load();
@@ -332,9 +334,9 @@ app.get('/api/bot/:botId', async (req, res) => {
 // ============ TRANSCRIPT ============
 
 app.get('/api/transcript/:botId', async (req, res) => {
-  const apiKey = credentialStore.get('recall_api_key');
+  const apiKey = await tokenClient.get('Recall.ai');
   if (!apiKey) {
-    return res.status(400).json({ error: 'Recall API key not configured' });
+    return res.status(400).json({ error: 'Recall.ai API key not configured' });
   }
   
   const config = configManager.load();

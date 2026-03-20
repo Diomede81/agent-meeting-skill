@@ -12,18 +12,18 @@
 
 const path = require('path');
 const { ConfigManager } = require('../lib/config-manager');
-const { CredentialStore } = require('../lib/credential-store');
+const { TokenClient } = require('../lib/token-client');
 const { CalendarClient } = require('../lib/calendar-client');
-const { RecallClient } = require('../lib/recall-client');
 const { StorageManager } = require('../lib/storage');
 
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
+const TOKEN_MANAGER_URL = process.env.TOKEN_MANAGER_URL || 'http://localhost:3021';
 const DRY_RUN = process.argv.includes('--dry-run');
 const API_URL = process.env.SKILL_API_URL || 'http://localhost:3030';
 
 async function poll() {
   const configManager = new ConfigManager(DATA_DIR);
-  const credentialStore = new CredentialStore(DATA_DIR);
+  const tokenClient = new TokenClient(TOKEN_MANAGER_URL);
   const storage = new StorageManager(DATA_DIR);
   
   const config = configManager.load();
@@ -41,10 +41,10 @@ async function poll() {
     return;
   }
   
-  // Check credentials
-  const apiKey = credentialStore.get('recall_api_key');
+  // Check credentials via token-manager
+  const apiKey = await tokenClient.get('Recall.ai');
   if (!apiKey) {
-    console.log('Recall API key not configured');
+    console.log('Recall.ai API key not configured in token-manager');
     return;
   }
   

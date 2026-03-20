@@ -21,22 +21,35 @@ git clone https://github.com/Diomede81/agent-meeting-skill.git
 cd agent-meeting-skill
 npm install
 
-# Start API server
+# 1. Store Recall.ai API key (credentials managed by token-manager-skill)
+echo "your-recall-api-key" > ~/.secrets/recall-api-key.txt
+chmod 600 ~/.secrets/recall-api-key.txt
+
+# 2. Register in token-manager
+curl -X POST http://localhost:3021/api/tokens \
+  -H "Content-Type: application/json" \
+  -d '{
+    "service": "Recall.ai",
+    "name": "API Key",
+    "category": "api",
+    "locationType": "file",
+    "location": "~/.secrets/recall-api-key.txt"
+  }'
+
+# 3. Start API server
 npm start
 # → http://localhost:3030
 
-# Configure via API
+# 4. Configure skill
 curl -X PUT http://localhost:3030/api/config \
   -H "Content-Type: application/json" \
   -d '{
     "bot": {"name": "Max"},
-    "calendar": {"source": "api", "endpoint": "http://localhost:3007/api/calendar"}
+    "calendar": {"source": "api", "endpoint": "http://localhost:3007/api/calendar", "agent": "luca"}
   }'
 
-# Add credentials
-curl -X POST http://localhost:3030/api/credentials \
-  -H "Content-Type: application/json" \
-  -d '{"name": "recall_api_key", "value": "your-api-key"}'
+# 5. Verify tokens are configured
+curl http://localhost:3030/api/tokens/verify
 ```
 
 ## API Reference
@@ -61,23 +74,20 @@ Content-Type: application/json
 {"bot": {"name": "Max"}, ...}
 ```
 
-### Credentials
+### Tokens (via token-manager-skill)
 
 ```bash
-# List credentials (values masked)
-GET /api/credentials
+# Check required tokens status
+GET /api/tokens
 
-# Add/update credential
-POST /api/credentials
-Content-Type: application/json
-{"name": "recall_api_key", "value": "sk-..."}
+# Verify all required tokens are configured
+GET /api/tokens/verify
 
-# Delete credential
-DELETE /api/credentials/recall_api_key
-
-# Test credential
-POST /api/credentials/test/recall_api_key
+# Test a specific token
+POST /api/tokens/test/Recall.ai
 ```
+
+**Note:** Credentials are managed by `token-manager-skill` (port 3021), not stored locally.
 
 ### Calendar
 
@@ -208,12 +218,13 @@ data/
 *Transcribed by Max*
 ```
 
-## Required Credentials
+## Required Tokens (via token-manager)
 
-| Name | Required | Description |
-|------|----------|-------------|
-| `recall_api_key` | Yes | Recall.ai API key for meeting bot |
-| `openai_api_key` | No | For auto-summarization |
+| Service | Location | Required | Description |
+|---------|----------|----------|-------------|
+| `Recall.ai` | `~/.secrets/recall-api-key.txt` | Yes | Meeting bot API |
+
+Register tokens via token-manager-skill (port 3021) before using this skill.
 
 ## Environment Variables
 
@@ -221,7 +232,8 @@ data/
 |----------|---------|-------------|
 | `PORT` | 3030 | API server port |
 | `DATA_DIR` | `./data` | Override data directory |
-| `LOG_LEVEL` | `info` | Logging verbosity |
+| `TOKEN_MANAGER_URL` | `http://localhost:3021` | Token manager API URL |
+| `SECRETS_DIR` | `~/.secrets` | Override secrets directory |
 
 ## License
 

@@ -12,18 +12,19 @@
 
 const path = require('path');
 const { ConfigManager } = require('../lib/config-manager');
-const { CredentialStore } = require('../lib/credential-store');
+const { TokenClient } = require('../lib/token-client');
 const { RecallClient } = require('../lib/recall-client');
 const { StorageManager } = require('../lib/storage');
 const { handleMeetingComplete } = require('./meeting-complete');
 
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
+const TOKEN_MANAGER_URL = process.env.TOKEN_MANAGER_URL || 'http://localhost:3021';
 const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL || '30000'); // 30 seconds
 const CONTINUOUS = process.argv.includes('--continuous');
 
 async function checkMeetingStatus() {
   const configManager = new ConfigManager(DATA_DIR);
-  const credentialStore = new CredentialStore(DATA_DIR);
+  const tokenClient = new TokenClient(TOKEN_MANAGER_URL);
   const storage = new StorageManager(DATA_DIR);
   
   const active = storage.getActiveMeeting();
@@ -32,9 +33,9 @@ async function checkMeetingStatus() {
     return { status: 'idle', message: 'No active meeting' };
   }
   
-  const apiKey = credentialStore.get('recall_api_key');
+  const apiKey = await tokenClient.get('Recall.ai');
   if (!apiKey) {
-    return { status: 'error', message: 'No API key configured' };
+    return { status: 'error', message: 'Recall.ai API key not configured in token-manager' };
   }
   
   const config = configManager.load();
