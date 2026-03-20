@@ -1031,6 +1031,66 @@ app.get('/api/cron/jobs', (req, res) => {
   });
 });
 
+
+// ============ DEPLOY WEBHOOK ============
+
+/**
+ * POST /api/deploy
+ * GitHub webhook for auto-deployment
+ * Pulls latest code and restarts the service
+ */
+app.post('/api/deploy', async (req, res) => {
+  const { exec } = require('child_process');
+  const { promisify } = require('util');
+  const execAsync = promisify(exec);
+  
+  const { repository, commit, message } = req.body;
+  
+  console.log(`\n🚀 Deploy webhook received`);
+  console.log(`   Repository: ${repository}`);
+  console.log(`   Commit: ${commit?.substring(0, 8)}`);
+  console.log(`   Message: ${message?.split('\n')[0]}`);
+  
+  try {
+    // Pull latest code
+    const skillDir = path.join(__dirname, '..');
+    const { stdout: pullOut } = await execAsync('git pull origin main', { cwd: skillDir });
+    console.log(`   Git pull: ${pullOut.trim()}`);
+    
+    // Install dependencies if package.json changed
+    if (message?.includes('package.json')) {
+      console.log('   Installing dependencies...');
+      await execAsync('npm ci', { cwd: skillDir });
+    }
+    
+    // Send response before restarting
+    res.json({ 
+      success: true, 
+      message: 'Deployment started, service restarting...',
+      commit: commit?.substring(0, 8)
+    });
+    
+    // Restart service after short delay (give response time to send)
+    setTimeout(async () => {
+      console.log('   Restarting service...');
+      try {
+        await execAsync('systemctl --user restart agent-meeting-skill');
+      } catch (e) {
+        // Service restart will kill this process, so errors are expected
+        console.log('   Service restart initiated');
+      }
+    }, 500);
+    
+  } catch (error) {
+    console.error(`   Deploy error: ${error.message}`);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+
 // ============ START ============
 
 app.listen(PORT, () => {
@@ -1055,6 +1115,7 @@ app.listen(PORT, () => {
   console.log(`  GET  /api/cron             - Get cron job definitions`);
   console.log(`  GET  /api/setup            - Get setup instructions for agent`);
   console.log(`  POST /api/setup/notify     - Generate setup notification`);
+  console.log(`  POST /api/deploy           - GitHub webhook for auto-deploy`);
   
   // Check if first run (no config or missing tokens)
   checkFirstRun();
