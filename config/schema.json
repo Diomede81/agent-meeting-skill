@@ -170,6 +170,41 @@
         }
       }
     },
+    "cron": {
+      "type": "object",
+      "title": "Cron Settings",
+      "description": "Configure polling intervals (managed by OpenClaw cron)",
+      "properties": {
+        "calendarPollEnabled": {
+          "type": "boolean",
+          "title": "Enable Calendar Polling",
+          "description": "Automatically check calendar for meetings to join",
+          "default": true
+        },
+        "calendarPollIntervalMs": {
+          "type": "integer",
+          "title": "Calendar Poll Interval (ms)",
+          "description": "How often to check calendar (default: 5 minutes)",
+          "default": 300000,
+          "minimum": 60000,
+          "maximum": 3600000
+        },
+        "meetingCheckEnabled": {
+          "type": "boolean",
+          "title": "Enable Meeting Status Check",
+          "description": "Monitor active meetings for completion",
+          "default": true
+        },
+        "meetingCheckIntervalMs": {
+          "type": "integer",
+          "title": "Meeting Check Interval (ms)",
+          "description": "How often to check active meeting status (default: 30 seconds)",
+          "default": 30000,
+          "minimum": 10000,
+          "maximum": 300000
+        }
+      }
+    },
     "platforms": {
       "type": "object",
       "title": "Enabled Platforms",

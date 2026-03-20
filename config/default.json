@@ -1,21 +1,44 @@
 {
-  "calendarAgent": "luca",
-  "botName": "Max",
-  "introMessage": "👋 Hi, I'm {botName} - I'm here to take notes for this meeting.",
-  "joinWindowMinutes": 5,
-  "leaveDelaySeconds": 30,
-  "transcriptFolder": "meetings",
-  "autoSummarize": true,
-  "recallRegion": "eu-central-1",
-  "middlewareUrl": "http://localhost:3007",
-  "port": 3030,
-  "polling": {
-    "enabled": true,
-    "intervalMinutes": 5
+  "bot": {
+    "name": "Max",
+    "introMessage": "👋 Hi, I'm {name} - I'm here to take notes for this meeting."
+  },
+  "calendar": {
+    "source": "api",
+    "endpoint": "http://localhost:3007/api/calendar",
+    "agent": "luca",
+    "pollIntervalMinutes": 5,
+    "joinWindowMinutes": 5
+  },
+  "transcription": {
+    "provider": "recall",
+    "region": "eu-central-1",
+    "speakerDiarization": true
+  },
+  "meetings": {
+    "autoJoin": true,
+    "autoLeave": true,
+    "leaveDelaySeconds": 30,
+    "sendIntroMessage": true
+  },
+  "storage": {
+    "transcriptFormat": "markdown",
+    "fileNamePattern": "{date}_{title}"
   },
   "platforms": {
     "teams": true,
     "zoom": true,
     "meet": true
+  },
+  "webhook": {
+    "onMeetingEnd": null,
+    "includeTranscript": true,
+    "retryCount": 3
+  },
+  "cron": {
+    "calendarPollEnabled": true,
+    "calendarPollIntervalMs": 300000,
+    "meetingCheckEnabled": true,
+    "meetingCheckIntervalMs": 30000
   }
 }

@@ -612,20 +612,70 @@ app.post('/webhook/transcript', (req, res) => {
   res.sendStatus(200);
 });
 
+// ============ CRON JOBS ============
+
+/**
+ * Get cron job definitions for OpenClaw
+ * UI can use this to configure cron jobs
+ */
+app.get('/api/cron', (req, res) => {
+  const config = configManager.load();
+  const cron = config.cron || {};
+  
+  const jobs = [];
+  
+  if (cron.calendarPollEnabled !== false) {
+    jobs.push({
+      id: 'meeting-calendar-poll',
+      name: 'Meeting Calendar Poll',
+      description: 'Check calendar for upcoming meetings and auto-join',
+      schedule: {
+        kind: 'every',
+        everyMs: cron.calendarPollIntervalMs || 300000
+      },
+      endpoint: `http://localhost:${PORT}/api/calendar/poll`,
+      method: 'POST'
+    });
+  }
+  
+  if (cron.meetingCheckEnabled !== false) {
+    jobs.push({
+      id: 'meeting-status-check',
+      name: 'Meeting Status Check',
+      description: 'Monitor active meetings for completion',
+      schedule: {
+        kind: 'every',
+        everyMs: cron.meetingCheckIntervalMs || 30000
+      },
+      endpoint: `http://localhost:${PORT}/api/meetings/check`,
+      method: 'POST'
+    });
+  }
+  
+  res.json({
+    enabled: jobs.length > 0,
+    jobs,
+    config: cron
+  });
+});
+
 // ============ START ============
 
 app.listen(PORT, () => {
   console.log(`Agent Meeting Skill API running on port ${PORT}`);
   console.log(`Data directory: ${DATA_DIR}`);
+  console.log(`Token Manager: ${TOKEN_MANAGER_URL}`);
   console.log(`\nEndpoints:`);
   console.log(`  GET  /api/status           - Health check`);
   console.log(`  GET  /api/config           - Get configuration`);
   console.log(`  PUT  /api/config           - Update configuration`);
-  console.log(`  GET  /api/config/schema    - Get JSON Schema`);
-  console.log(`  GET  /api/credentials      - List credentials`);
-  console.log(`  POST /api/credentials      - Add credential`);
+  console.log(`  GET  /api/config/schema    - JSON Schema for UI`);
+  console.log(`  GET  /api/tokens           - Check required tokens`);
   console.log(`  GET  /api/calendar/upcoming - Get upcoming meetings`);
+  console.log(`  POST /api/calendar/poll    - Poll calendar (for cron)`);
   console.log(`  POST /api/meetings/join    - Join a meeting`);
   console.log(`  POST /api/meetings/leave   - Leave current meeting`);
+  console.log(`  POST /api/meetings/check   - Check active meeting (for cron)`);
   console.log(`  GET  /api/meetings         - List saved transcripts`);
+  console.log(`  GET  /api/cron             - Get cron job definitions`);
 });

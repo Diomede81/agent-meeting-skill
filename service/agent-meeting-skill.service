@@ -1,0 +1,16 @@
+[Unit]
+Description=Agent Meeting Skill API Server
+After=network.target token-manager.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/clawd/skills/agent-meeting-skill
+ExecStart=%h/.nvm/versions/node/v25.5.0/bin/node scripts/server.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+Environment=PORT=3030
+Environment=TOKEN_MANAGER_URL=http://localhost:3021
+
+[Install]
+WantedBy=default.target
