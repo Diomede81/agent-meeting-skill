@@ -311,6 +311,18 @@
               "description": "Maximum characters for summary (0 = no limit)",
               "default": 0,
               "minimum": 0
+            },
+            "provider": {
+              "type": "string",
+              "title": "AI Provider",
+              "description": "Which AI provider to use for summaries",
+              "default": "openai",
+              "enum": ["openai", "anthropic"]
+            },
+            "model": {
+              "type": "string",
+              "title": "AI Model",
+              "description": "Model for summary generation (options depend on provider)"
             }
           }
         }

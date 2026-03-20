@@ -635,8 +635,11 @@ app.post('/api/meetings/check', async (req, res) => {
         
         try {
           // Use AIClient to generate summary directly (no cron dependency)
+          const provider = deliveryConfig.summaryOptions?.provider || 'openai';
           const aiClient = new AIClient({ 
-            gatewayUrl: config.cron?.gatewayUrl || 'http://localhost:18789',
+            tokenManagerUrl: TOKEN_MANAGER_URL,
+            provider: provider,
+            model: deliveryConfig.summaryOptions?.model,
             timeout: 120000 // 2 minutes for summary generation
           });
           
@@ -886,6 +889,55 @@ app.post('/api/delivery/complete', async (req, res) => {
   res.json({
     success: true,
     deliveryResult: result
+  });
+});
+
+/**
+ * Get available AI providers and their models
+ * Returns which providers have API keys configured in token-manager
+ */
+app.get('/api/ai/providers', async (req, res) => {
+  try {
+    const providers = await AIClient.getAvailableProviders(TOKEN_MANAGER_URL);
+    const config = configManager.load();
+    const currentProvider = config.delivery?.summaryOptions?.provider || 'openai';
+    const currentModel = config.delivery?.summaryOptions?.model;
+    
+    res.json({
+      providers,
+      current: {
+        provider: currentProvider,
+        model: currentModel || providers.find(p => p.id === currentProvider)?.defaultModel
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Set AI provider and model for summaries
+ */
+app.put('/api/ai/provider', (req, res) => {
+  const { provider, model } = req.body;
+  
+  if (!['openai', 'anthropic'].includes(provider)) {
+    return res.status(400).json({ error: 'Invalid provider. Use "openai" or "anthropic".' });
+  }
+  
+  const config = configManager.load();
+  config.delivery = config.delivery || {};
+  config.delivery.summaryOptions = config.delivery.summaryOptions || {};
+  config.delivery.summaryOptions.provider = provider;
+  if (model) {
+    config.delivery.summaryOptions.model = model;
+  }
+  configManager.save(config);
+  
+  res.json({ 
+    success: true, 
+    provider,
+    model: config.delivery.summaryOptions.model
   });
 });
 
