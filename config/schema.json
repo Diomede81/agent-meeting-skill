@@ -317,48 +317,5 @@
       }
     }
   },
-    "cron": {
-      "type": "object",
-      "title": "Cron Job Settings",
-      "description": "Configure automated polling jobs",
-      "properties": {
-        "calendarPollEnabled": {
-          "type": "boolean",
-          "title": "Enable Calendar Polling",
-          "description": "Automatically check calendar for upcoming meetings",
-          "default": true
-        },
-        "calendarPollIntervalMs": {
-          "type": "integer",
-          "title": "Calendar Poll Interval (ms)",
-          "description": "How often to check calendar (default: 60000 = 1 minute)",
-          "default": 60000,
-          "minimum": 30000,
-          "maximum": 300000
-        },
-        "meetingCheckEnabled": {
-          "type": "boolean",
-          "title": "Enable Meeting Status Check",
-          "description": "Monitor active meetings for completion",
-          "default": true
-        },
-        "meetingCheckIntervalMs": {
-          "type": "integer",
-          "title": "Meeting Check Interval (ms)",
-          "description": "How often to check meeting status (default: 60000 = 1 minute)",
-          "default": 60000,
-          "minimum": 30000,
-          "maximum": 300000
-        },
-        "gatewayUrl": {
-          "type": "string",
-          "title": "OpenClaw Gateway URL",
-          "description": "URL for cron job installation (default: http://localhost:18789)",
-          "default": "http://localhost:18789",
-          "format": "uri"
-        }
-      }
-    }
-  },
   "required": ["bot", "calendar"]
 }
