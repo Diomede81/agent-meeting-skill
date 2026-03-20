@@ -1,0 +1,21 @@
+{
+  "calendarAgent": "luca",
+  "botName": "Max",
+  "introMessage": "👋 Hi, I'm {botName} - I'm here to take notes for this meeting.",
+  "joinWindowMinutes": 5,
+  "leaveDelaySeconds": 30,
+  "transcriptFolder": "meetings",
+  "autoSummarize": true,
+  "recallRegion": "eu-central-1",
+  "middlewareUrl": "http://localhost:3007",
+  "port": 3030,
+  "polling": {
+    "enabled": true,
+    "intervalMinutes": 5
+  },
+  "platforms": {
+    "teams": true,
+    "zoom": true,
+    "meet": true
+  }
+}
