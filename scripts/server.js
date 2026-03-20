@@ -150,6 +150,115 @@ app.post('/api/calendar/test', async (req, res) => {
   }
 });
 
+/**
+ * Poll calendar and auto-join meetings
+ * Called by OpenClaw cron or agent directly
+ */
+app.post('/api/calendar/poll', async (req, res) => {
+  const config = configManager.load();
+  
+  // Check if auto-join is enabled
+  if (!config.meetings?.autoJoin) {
+    return res.json({ action: 'none', reason: 'Auto-join disabled' });
+  }
+  
+  // Check for active meeting
+  const active = storage.getActiveMeeting();
+  if (active) {
+    return res.json({ 
+      action: 'none', 
+      reason: 'Already in meeting',
+      activeMeeting: { title: active.title, botId: active.botId }
+    });
+  }
+  
+  // Check credentials
+  const apiKey = await tokenClient.get('Recall.ai');
+  if (!apiKey) {
+    return res.status(400).json({ 
+      action: 'error', 
+      reason: 'Recall.ai API key not configured' 
+    });
+  }
+  
+  // Check calendar config
+  if (!config.calendar?.endpoint) {
+    return res.status(400).json({ 
+      action: 'error', 
+      reason: 'Calendar endpoint not configured' 
+    });
+  }
+  
+  // Get upcoming meetings
+  let meetings;
+  try {
+    const calendarClient = new CalendarClient(config.calendar);
+    meetings = await calendarClient.getUpcoming();
+  } catch (e) {
+    return res.status(500).json({ action: 'error', reason: e.message });
+  }
+  
+  if (meetings.length === 0) {
+    return res.json({ action: 'none', reason: 'No meetings starting soon' });
+  }
+  
+  // Filter by enabled platforms
+  const enabledPlatforms = Object.entries(config.platforms || {})
+    .filter(([_, enabled]) => enabled)
+    .map(([platform]) => platform);
+  
+  const joinable = meetings.filter(m => 
+    !m.platform || enabledPlatforms.includes(m.platform)
+  );
+  
+  if (joinable.length === 0) {
+    return res.json({ 
+      action: 'none', 
+      reason: 'Found meetings but none on enabled platforms',
+      meetings: meetings.map(m => ({ title: m.title, platform: m.platform }))
+    });
+  }
+  
+  // Join first meeting
+  const meeting = joinable[0];
+  
+  try {
+    const recall = new RecallClient({ apiKey, region: config.transcription?.region });
+    
+    const botName = config.bot?.name || 'Meeting Assistant';
+    let introMessage = null;
+    if (config.meetings?.sendIntroMessage !== false) {
+      introMessage = (config.bot?.introMessage || "👋 Hi, I'm {name} - I'm here to take notes.")
+        .replace('{name}', botName);
+    }
+    
+    const bot = await recall.createBot({
+      meetingUrl: meeting.meetingUrl,
+      botName,
+      introMessage
+    });
+    
+    // Save state
+    const meetingState = {
+      botId: bot.id,
+      title: meeting.title,
+      url: meeting.meetingUrl,
+      platform: meeting.platform,
+      startedAt: new Date().toISOString(),
+      calendarEventId: meeting.id
+    };
+    storage.setActiveMeeting(meetingState);
+    
+    res.json({
+      action: 'joined',
+      meeting: meetingState,
+      message: `Joined "${meeting.title}" on ${meeting.platform}`
+    });
+  } catch (e) {
+    res.status(500).json({ action: 'error', reason: e.message });
+  }
+});
+
 // ============ MEETINGS ============
 
 app.get('/api/meetings', (req, res) => {
@@ -352,6 +461,141 @@ app.get('/api/transcript/:botId', async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
+// ============ MONITOR ACTIVE MEETING ============
+
+/**
+ * Check status of active meeting and handle completion
+ * Called by OpenClaw cron or agent directly
+ */
+app.post('/api/meetings/check', async (req, res) => {
+  const active = storage.getActiveMeeting();
+  
+  if (!active) {
+    return res.json({ status: 'idle', message: 'No active meeting' });
+  }
+  
+  const apiKey = await tokenClient.get('Recall.ai');
+  if (!apiKey) {
+    return res.json({ status: 'error', message: 'No API key' });
+  }
+  
+  const config = configManager.load();
+  const recall = new RecallClient({ apiKey, region: config.transcription?.region });
+  
+  let bot;
+  try {
+    bot = await recall.getBotStatus(active.botId);
+  } catch (e) {
+    return res.json({ status: 'error', message: e.message });
+  }
+  
+  const statusCode = recall.getStatusCode(bot);
+  
+  // Check if meeting completed
+  if (recall.isComplete(bot)) {
+    // Fetch and save transcript
+    let transcript = null;
+    let transcriptPath = null;
+    
+    try {
+      if (bot.transcript?.url) {
+        const transcriptRes = await fetch(bot.transcript.url);
+        transcript = await transcriptRes.json();
+      }
+    } catch (e) {
+      console.error('Failed to fetch transcript:', e.message);
+    }
+    
+    const meeting = {
+      ...active,
+      duration: calculateDuration(bot.status_changes),
+      attendees: []
+    };
+    
+    if (transcript) {
+      transcriptPath = storage.saveTranscript(meeting, transcript, {
+        transcriptFormat: config.storage?.transcriptFormat,
+        fileNamePattern: config.storage?.fileNamePattern,
+        botName: config.bot?.name
+      });
+    }
+    
+    storage.clearActiveMeeting();
+    
+    // Send webhook to agent
+    if (config.webhook?.onMeetingEnd) {
+      await sendAgentWebhook(config.webhook, meeting, transcript, transcriptPath);
+    }
+    
+    return res.json({
+      status: 'completed',
+      meeting: {
+        title: meeting.title,
+        duration: meeting.duration,
+        transcriptPath
+      },
+      webhookSent: !!config.webhook?.onMeetingEnd
+    });
+  }
+  
+  // Still active
+  return res.json({
+    status: 'active',
+    botStatus: statusCode,
+    meeting: {
+      title: active.title,
+      botId: active.botId,
+      startedAt: active.startedAt
+    }
+  });
+});
+
+function calculateDuration(statusChanges) {
+  if (!statusChanges || statusChanges.length < 2) return null;
+  const inCall = statusChanges.find(s => s.code === 'in_call_recording');
+  const done = statusChanges.find(s => s.code === 'done');
+  if (inCall && done) {
+    return Math.round((new Date(done.created_at) - new Date(inCall.created_at)) / 1000);
+  }
+  return null;
+}
+
+async function sendAgentWebhook(webhookConfig, meeting, transcript, transcriptPath) {
+  const { onMeetingEnd, includeTranscript = true, retryCount = 3 } = webhookConfig;
+  
+  const payload = {
+    event: 'meeting.completed',
+    timestamp: new Date().toISOString(),
+    meeting: {
+      id: meeting.botId,
+      title: meeting.title,
+      date: meeting.startedAt,
+      duration: meeting.duration,
+      platform: meeting.platform
+    },
+    transcript: { path: transcriptPath }
+  };
+  
+  if (includeTranscript && transcript) {
+    payload.raw = transcript;
+  }
+  
+  for (let attempt = 1; attempt <= retryCount; attempt++) {
+    try {
+      const res = await fetch(onMeetingEnd, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) return true;
+    } catch (e) {
+      console.error(`Webhook attempt ${attempt} failed:`, e.message);
+    }
+    if (attempt < retryCount) await new Promise(r => setTimeout(r, 1000 * attempt));
+  }
+  return false;
+}
 
 // ============ WEBHOOK RECEIVER ============
 

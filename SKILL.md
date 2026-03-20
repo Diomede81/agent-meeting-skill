@@ -39,8 +39,7 @@ Automated meeting attendance, transcription, and note-taking for AI agents.
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | /api/calendar/upcoming | List upcoming meetings |
-| POST | /api/calendar/source | Configure calendar source |
-| GET | /api/calendar/source | Get calendar source config |
+| POST | /api/calendar/poll | Check calendar and auto-join (for cron) |
 | POST | /api/calendar/test | Test calendar connection |
 
 ### Meetings
@@ -53,6 +52,7 @@ Automated meeting attendance, transcription, and note-taking for AI agents.
 | GET | /api/meetings/active | Get current active meeting |
 | POST | /api/meetings/join | Join a meeting manually |
 | POST | /api/meetings/leave | Leave current meeting |
+| POST | /api/meetings/check | Check active meeting status (for cron) |
 
 ### Status
 
@@ -160,6 +160,52 @@ The agent receives this webhook and processes with its own model for:
 - Context-aware processing (knows people, projects, history)
 
 This separation keeps the skill focused and lets the agent use its full context.
+
+## OpenClaw Cron Integration
+
+The skill provides two endpoints for cron-based automation:
+
+### 1. Calendar Poll (check and auto-join)
+```bash
+POST /api/calendar/poll
+```
+Returns: `{ action: "joined"|"none"|"error", ... }`
+
+### 2. Meeting Check (monitor active meeting)
+```bash
+POST /api/meetings/check
+```
+Returns: `{ status: "active"|"completed"|"idle"|"error", ... }`
+
+### Recommended Cron Setup
+
+Add these cron jobs via OpenClaw:
+
+```javascript
+// Poll calendar every 5 minutes (check for meetings to join)
+{
+  "name": "meeting-calendar-poll",
+  "schedule": { "kind": "every", "everyMs": 300000 },
+  "payload": { 
+    "kind": "systemEvent", 
+    "text": "[MEETING-SKILL] Poll calendar: curl -s -X POST http://localhost:3030/api/calendar/poll" 
+  },
+  "sessionTarget": "main"
+}
+
+// Check active meeting every 30 seconds (detect completion)
+{
+  "name": "meeting-status-check",
+  "schedule": { "kind": "every", "everyMs": 30000 },
+  "payload": { 
+    "kind": "systemEvent", 
+    "text": "[MEETING-SKILL] Check status: curl -s -X POST http://localhost:3030/api/meetings/check" 
+  },
+  "sessionTarget": "main"
+}
+```
+
+Or the agent can call these endpoints directly when it receives a heartbeat.
 
 ## Credential Management (via token-manager-skill)
 
