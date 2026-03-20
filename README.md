@@ -1,121 +1,190 @@
 # Agent Meeting Skill
 
-**OpenClaw skill for automated meeting attendance and transcription**
+**Fully isolated, API-configurable meeting skill for OpenClaw agents**
 
 Join meetings, transcribe with speaker identification, and save notes automatically.
 
-## Features
+## Design Principles
 
-| Feature | Description |
-|---------|-------------|
-| 📅 Calendar Integration | Pull meetings where agent is invited |
-| 🎥 Platform Agnostic | Teams, Zoom, Google Meet |
-| 💬 Chat Introduction | Announce presence in meeting chat |
-| 🎙️ Transcription | Real-time with speaker identification |
-| 🚪 Auto Leave | Detect meeting end and exit |
-| 📝 Auto Save | Save transcripts with proper naming |
+| Principle | Description |
+|-----------|-------------|
+| 🔌 **Isolated** | No hardcoded paths or agent-specific code |
+| 🌐 **API-First** | All configuration via REST API |
+| 📦 **Portable** | Install on any OpenClaw agent |
+| 🎨 **UI-Ready** | JSON Schema for form generation |
 
 ## Quick Start
 
 ```bash
-# Clone
+# Install
 git clone https://github.com/Diomede81/agent-meeting-skill.git
 cd agent-meeting-skill
-
-# Install
 npm install
 
-# Configure
-cp config/default.json config/local.json
-# Edit config/local.json with your settings
-
-# Start
+# Start API server
 npm start
-```
+# → http://localhost:3030
 
-## Requirements
+# Configure via API
+curl -X PUT http://localhost:3030/api/config \
+  -H "Content-Type: application/json" \
+  -d '{
+    "bot": {"name": "Max"},
+    "calendar": {"source": "api", "endpoint": "http://localhost:3007/api/calendar"}
+  }'
 
-- Node.js 18+
-- Recall.ai API key
-- Microsoft Middleware running (for calendar access)
-
-## Architecture
-
-```
-┌─────────────────┐     ┌──────────────────┐
-│  Calendar API   │────▶│  Calendar Poll   │
-│  (Middleware)   │     │  (every 5 min)   │
-└─────────────────┘     └────────┬─────────┘
-                                 │
-                                 ▼
-                        ┌────────────────┐
-                        │ Meeting within │
-                        │   5 minutes?   │
-                        └───────┬────────┘
-                                │ Yes
-                                ▼
-┌─────────────────┐     ┌──────────────────┐
-│   Recall.ai     │◀────│   Meeting Bot    │
-│   (Join/STT)    │     │   (Join + Chat)  │
-└────────┬────────┘     └──────────────────┘
-         │
-         │ Transcription
-         ▼
-┌─────────────────┐     ┌──────────────────┐
-│   Transcript    │────▶│   Save to File   │
-│   Processing    │     │   meetings/*.md  │
-└─────────────────┘     └──────────────────┘
-```
-
-## Configuration
-
-```json
-{
-  "calendarAgent": "luca",
-  "botName": "Max",
-  "introMessage": "👋 Hi, I'm {botName} - I'm here to take notes.",
-  "joinWindowMinutes": 5,
-  "transcriptFolder": "meetings",
-  "autoSummarize": true,
-  "recallRegion": "eu-central-1"
-}
+# Add credentials
+curl -X POST http://localhost:3030/api/credentials \
+  -H "Content-Type: application/json" \
+  -d '{"name": "recall_api_key", "value": "your-api-key"}'
 ```
 
 ## API Reference
 
-### GET /api/upcoming
-List meetings that will be joined.
+### Configuration
 
-### POST /api/join
-Join a specific meeting manually.
+```bash
+# Get current config
+GET /api/config
 
-### GET /api/status
-Get current meeting status (joined, transcribing, idle).
+# Update config
+PUT /api/config
+Content-Type: application/json
+{"bot": {"name": "Max"}, ...}
 
-### POST /api/leave
-Leave current meeting manually.
+# Get JSON Schema (for UI forms)
+GET /api/config/schema
 
-### GET /api/transcript
-Get current meeting transcript.
+# Validate config without saving
+POST /api/config/validate
+Content-Type: application/json
+{"bot": {"name": "Max"}, ...}
+```
 
-### GET /api/meetings
-List all saved meeting transcripts.
+### Credentials
 
-## Workflow
+```bash
+# List credentials (values masked)
+GET /api/credentials
 
-1. **Poll Calendar** - Check for meetings every 5 minutes
-2. **Auto Join** - Join meetings starting within the join window
-3. **Introduce** - Send chat message announcing presence
-4. **Transcribe** - Real-time transcription with speaker IDs
-5. **Detect End** - Monitor for meeting end signals
-6. **Save** - Process and save transcript to `meetings/YYYY-MM-DD_title.md`
+# Add/update credential
+POST /api/credentials
+Content-Type: application/json
+{"name": "recall_api_key", "value": "sk-..."}
+
+# Delete credential
+DELETE /api/credentials/recall_api_key
+
+# Test credential
+POST /api/credentials/test/recall_api_key
+```
+
+### Calendar
+
+```bash
+# Get upcoming meetings
+GET /api/calendar/upcoming
+
+# Test calendar connection
+POST /api/calendar/test
+```
+
+### Meetings
+
+```bash
+# List saved transcripts
+GET /api/meetings
+
+# Get specific transcript
+GET /api/meetings/2026-03-20_weekly-standup
+
+# Get active meeting status
+GET /api/meetings/active
+
+# Join meeting manually
+POST /api/meetings/join
+Content-Type: application/json
+{"url": "https://teams.microsoft.com/l/meetup-join/..."}
+
+# Leave current meeting
+POST /api/meetings/leave
+
+# Live transcript (Server-Sent Events)
+GET /api/transcript/live
+```
+
+### Status
+
+```bash
+# Health check
+GET /api/status
+```
+
+## UI Integration
+
+The skill is designed for any UI to configure it:
+
+```javascript
+// 1. Fetch schema
+const schema = await fetch('/api/config/schema').then(r => r.json());
+
+// 2. Generate form from JSON Schema
+// (use react-jsonschema-form, ajv, or similar)
+
+// 3. Save configuration
+await fetch('/api/config', {
+  method: 'PUT',
+  headers: {'Content-Type': 'application/json'},
+  body: JSON.stringify(formData)
+});
+```
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      UI / Mission Control                    │
+└─────────────────────────────┬───────────────────────────────┘
+                              │ HTTP/REST
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Agent Meeting Skill API                   │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐    │
+│  │  Config  │  │ Calendar │  │ Meetings │  │ Credentials│   │
+│  │  Manager │  │  Client  │  │   Bot    │  │   Store   │    │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘    │
+└─────────────────────────────┬───────────────────────────────┘
+                              │
+        ┌─────────────────────┼─────────────────────┐
+        ▼                     ▼                     ▼
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│ Calendar API │    │  Recall.ai   │    │   Storage    │
+│ (Middleware) │    │ (Meeting Bot)│    │  (data/*.md) │
+└──────────────┘    └──────────────┘    └──────────────┘
+```
+
+## Data Storage
+
+All data stored within skill directory (portable):
+
+```
+data/
+├── config.json       # User configuration
+├── credentials.enc   # Encrypted credentials
+├── state.json        # Runtime state
+└── meetings/         # Saved transcripts
+    ├── 2026-03-20_weekly-standup.md
+    └── 2026-03-21_project-review.md
+```
 
 ## Transcript Format
 
 ```markdown
 # Meeting: Weekly Standup
+
 **Date:** 2026-03-20 10:00 AM  
 **Duration:** 45 minutes  
+**Platform:** Microsoft Teams  
 **Attendees:** Luca, Masum, Austin
 
 ---
@@ -124,15 +193,35 @@ List all saved meeting transcripts.
 
 **Luca (10:00:15):** Good morning everyone, let's get started.
 
-**Masum (10:00:22):** Morning! I'll go first...
-
-...
+**Masum (10:00:22):** Morning! I'll go first with the Empathika update...
 
 ---
 
 ## Summary
-(Auto-generated summary of key points)
+
+- Empathika v2.3 release scheduled for next week
+- Action item: Masum to finalize API documentation
+- Next standup: Thursday 10 AM
+
+---
+
+*Transcribed by Max*
 ```
+
+## Required Credentials
+
+| Name | Required | Description |
+|------|----------|-------------|
+| `recall_api_key` | Yes | Recall.ai API key for meeting bot |
+| `openai_api_key` | No | For auto-summarization |
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | 3030 | API server port |
+| `DATA_DIR` | `./data` | Override data directory |
+| `LOG_LEVEL` | `info` | Logging verbosity |
 
 ## License
 

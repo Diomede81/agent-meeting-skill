@@ -1,0 +1,175 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent Meeting Skill Configuration",
+  "type": "object",
+  "properties": {
+    "bot": {
+      "type": "object",
+      "title": "Bot Settings",
+      "properties": {
+        "name": {
+          "type": "string",
+          "title": "Bot Name",
+          "description": "Name displayed in meetings",
+          "default": "Assistant"
+        },
+        "introMessage": {
+          "type": "string",
+          "title": "Introduction Message",
+          "description": "Message sent to meeting chat on join. Use {name} for bot name.",
+          "default": "👋 Hi, I'm {name} - I'm here to take notes for this meeting."
+        }
+      },
+      "required": ["name"]
+    },
+    "calendar": {
+      "type": "object",
+      "title": "Calendar Settings",
+      "properties": {
+        "source": {
+          "type": "string",
+          "title": "Calendar Source",
+          "enum": ["microsoft", "google", "ical", "api"],
+          "default": "api",
+          "description": "Calendar provider type"
+        },
+        "endpoint": {
+          "type": "string",
+          "title": "Calendar API Endpoint",
+          "description": "URL for calendar API (e.g., http://localhost:3007/api/calendar)",
+          "format": "uri"
+        },
+        "agent": {
+          "type": "string",
+          "title": "Calendar Agent/Account",
+          "description": "Agent name for calendar API authentication"
+        },
+        "pollIntervalMinutes": {
+          "type": "integer",
+          "title": "Poll Interval (minutes)",
+          "description": "How often to check for upcoming meetings",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 60
+        },
+        "joinWindowMinutes": {
+          "type": "integer",
+          "title": "Join Window (minutes)",
+          "description": "Join meetings starting within this many minutes",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 30
+        }
+      },
+      "required": ["source"]
+    },
+    "transcription": {
+      "type": "object",
+      "title": "Transcription Settings",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "title": "Transcription Provider",
+          "enum": ["recall", "deepgram", "whisper"],
+          "default": "recall"
+        },
+        "region": {
+          "type": "string",
+          "title": "Provider Region",
+          "description": "API region for transcription provider",
+          "default": "eu-central-1"
+        },
+        "speakerDiarization": {
+          "type": "boolean",
+          "title": "Speaker Identification",
+          "description": "Identify who said what",
+          "default": true
+        },
+        "language": {
+          "type": "string",
+          "title": "Language",
+          "description": "Primary language for transcription",
+          "default": "en"
+        }
+      }
+    },
+    "meetings": {
+      "type": "object",
+      "title": "Meeting Behavior",
+      "properties": {
+        "autoJoin": {
+          "type": "boolean",
+          "title": "Auto-Join Meetings",
+          "description": "Automatically join meetings from calendar",
+          "default": true
+        },
+        "autoLeave": {
+          "type": "boolean",
+          "title": "Auto-Leave on End",
+          "description": "Automatically leave when meeting ends",
+          "default": true
+        },
+        "leaveDelaySeconds": {
+          "type": "integer",
+          "title": "Leave Delay (seconds)",
+          "description": "Wait this long after meeting appears to end",
+          "default": 30,
+          "minimum": 0,
+          "maximum": 300
+        },
+        "sendIntroMessage": {
+          "type": "boolean",
+          "title": "Send Introduction",
+          "description": "Send intro message to meeting chat",
+          "default": true
+        }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "title": "Storage Settings",
+      "properties": {
+        "transcriptFormat": {
+          "type": "string",
+          "title": "Transcript Format",
+          "enum": ["markdown", "json", "txt"],
+          "default": "markdown"
+        },
+        "fileNamePattern": {
+          "type": "string",
+          "title": "File Name Pattern",
+          "description": "Pattern for transcript filenames. Use {date}, {title}, {time}",
+          "default": "{date}_{title}"
+        },
+        "autoSummarize": {
+          "type": "boolean",
+          "title": "Auto-Summarize",
+          "description": "Generate AI summary of meeting",
+          "default": true
+        }
+      }
+    },
+    "platforms": {
+      "type": "object",
+      "title": "Enabled Platforms",
+      "properties": {
+        "teams": {
+          "type": "boolean",
+          "title": "Microsoft Teams",
+          "default": true
+        },
+        "zoom": {
+          "type": "boolean",
+          "title": "Zoom",
+          "default": true
+        },
+        "meet": {
+          "type": "boolean",
+          "title": "Google Meet",
+          "default": true
+        }
+      }
+    }
+  },
+  "required": ["bot", "calendar"]
+}
