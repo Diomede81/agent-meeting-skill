@@ -20,7 +20,7 @@ const { RecallClient } = require('../lib/recall-client');
 const { StorageManager } = require('../lib/storage');
 const { DeliveryManager } = require('../lib/delivery');
 const { MeetingSummarizer } = require('../lib/summarizer');
-const { AvatarManager } = require('../lib/avatar-manager');
+
 
 // Initialize
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
@@ -30,7 +30,7 @@ const TOKEN_MANAGER_URL = process.env.TOKEN_MANAGER_URL || 'http://localhost:302
 const configManager = new ConfigManager(DATA_DIR);
 const tokenClient = new TokenClient(TOKEN_MANAGER_URL);
 const storage = new StorageManager(DATA_DIR);
-const avatarManager = new AvatarManager();
+
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
@@ -236,13 +236,9 @@ app.post('/api/calendar/poll', async (req, res) => {
         .replace('{name}', botName);
     }
     
-    // Get avatar URL from config
-    const botImage = config.bot?.avatar || null;
-    
     const bot = await recall.createBot({
       meetingUrl: meeting.meetingUrl,
       botName,
-      botImage,
       introMessage
     });
     
@@ -362,14 +358,10 @@ app.post('/api/meetings/join', async (req, res) => {
         .replace('{name}', botName);
     }
     
-    // Get avatar URL from config
-    const botImage = config.bot?.avatar || null;
-    
     // Create bot
     const bot = await recall.createBot({
       meetingUrl: meeting_url,
       botName,
-      botImage,
       introMessage
     });
     
@@ -944,134 +936,6 @@ app.get('/api/cron/jobs', (req, res) => {
     jobs,
     instructions: 'Use OpenClaw cron tool to install: cron(action=add, job=<job>)'
   });
-});
-
-// ============ AVATAR ============
-
-/**
- * GET /api/avatar/:agentId
- * Get avatar URL for an agent
- */
-app.get('/api/avatar/:agentId', async (req, res) => {
-  try {
-    const { agentId } = req.params;
-    const config = configManager.load();
-    
-    // Check if avatar URL is in config
-    const avatarUrl = config.bot?.avatar;
-    
-    if (avatarUrl) {
-      res.json({ agentId, url: avatarUrl, source: 'config' });
-    } else {
-      res.json({ agentId, url: null, source: null });
-    }
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-/**
- * POST /api/avatar/:agentId
- * Upload avatar for an agent
- * 
- * Body (JSON): { "image": "<base64 data or data URL>", "mimeType": "image/png" }
- * OR
- * Body (multipart): file upload
- */
-app.post('/api/avatar/:agentId', express.raw({ type: 'image/*', limit: '5mb' }), async (req, res) => {
-  try {
-    const { agentId } = req.params;
-    let imageData, mimeType;
-
-    // Check if JSON body with base64
-    if (req.is('application/json')) {
-      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-      imageData = body.image;
-      mimeType = body.mimeType || 'image/png';
-    } 
-    // Raw image upload
-    else if (req.is('image/*')) {
-      imageData = req.body;
-      mimeType = req.get('content-type') || 'image/png';
-    }
-    else {
-      return res.status(400).json({ error: 'Send image as base64 JSON or raw image/* body' });
-    }
-
-    if (!imageData) {
-      return res.status(400).json({ error: 'No image data provided' });
-    }
-
-    // Upload to S3
-    const result = await avatarManager.uploadAvatar(agentId, imageData, mimeType);
-
-    // Save URL to config
-    const config = configManager.load();
-    config.bot = config.bot || {};
-    config.bot.avatar = result.url;
-    configManager.save(config);
-
-    res.json({
-      success: true,
-      agentId: result.agentId,
-      url: result.url,
-      message: 'Avatar uploaded and saved to config'
-    });
-  } catch (error) {
-    console.error('Avatar upload error:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-/**
- * POST /api/avatar/:agentId/from-url
- * Set avatar from existing URL (no upload)
- */
-app.post('/api/avatar/:agentId/from-url', async (req, res) => {
-  try {
-    const { agentId } = req.params;
-    const { url } = req.body;
-
-    if (!url) {
-      return res.status(400).json({ error: 'URL is required' });
-    }
-
-    // Save URL to config
-    const config = configManager.load();
-    config.bot = config.bot || {};
-    config.bot.avatar = url;
-    configManager.save(config);
-
-    res.json({
-      success: true,
-      agentId,
-      url,
-      message: 'Avatar URL saved to config'
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-/**
- * DELETE /api/avatar/:agentId
- * Remove avatar for an agent
- */
-app.delete('/api/avatar/:agentId', async (req, res) => {
-  try {
-    const { agentId } = req.params;
-    
-    // Remove from config
-    const config = configManager.load();
-    if (config.bot) {
-      delete config.bot.avatar;
-      configManager.save(config);
-    }
-
-    res.json({ success: true, message: 'Avatar removed from config' });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
 });
 
 // ============ START ============

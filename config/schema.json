@@ -13,12 +13,7 @@
           "description": "Name displayed in meetings",
           "default": "Assistant"
         },
-        "avatar": {
-          "type": "string",
-          "title": "Avatar Image URL",
-          "description": "URL to bot's profile picture (shown in meetings and emails). Upload via POST /api/avatar/:agentId",
-          "format": "uri"
-        },
+
         "introMessage": {
           "type": "string",
           "title": "Introduction Message",
