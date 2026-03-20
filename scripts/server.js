@@ -882,6 +882,70 @@ app.get('/api/cron', (req, res) => {
   });
 });
 
+/**
+ * GET /api/cron/jobs
+ * Get cron job definitions ready for OpenClaw installation
+ * 
+ * The agent should use the OpenClaw cron tool to install these jobs:
+ * cron(action=add, job=<job object from this endpoint>)
+ */
+app.get('/api/cron/jobs', (req, res) => {
+  const config = configManager.load();
+  const cron = config.cron || {};
+  
+  const jobs = [];
+  
+  // Calendar poll job
+  if (cron.calendarPollEnabled !== false) {
+    jobs.push({
+      name: 'meeting-calendar-poll',
+      schedule: {
+        kind: 'every',
+        everyMs: cron.calendarPollIntervalMs || 60000
+      },
+      sessionTarget: 'isolated',
+      payload: {
+        kind: 'agentTurn',
+        message: `Poll calendar for upcoming meetings and auto-join:
+1. GET http://localhost:${PORT}/api/calendar/upcoming - check for meetings starting within 5 minutes
+2. For any meeting with a joinUrl, POST http://localhost:${PORT}/api/calendar/join/:meetingId
+3. Reply NO_REPLY unless you joined a meeting or there was an error`,
+        timeoutSeconds: 60
+      },
+      delivery: { mode: 'none' },
+      enabled: true
+    });
+  }
+  
+  // Meeting status check job
+  if (cron.meetingCheckEnabled !== false) {
+    jobs.push({
+      name: 'meeting-status-check',
+      schedule: {
+        kind: 'every',
+        everyMs: cron.meetingCheckIntervalMs || 60000
+      },
+      sessionTarget: 'isolated',
+      payload: {
+        kind: 'agentTurn',
+        message: `Check meeting skill for completed meetings and pending deliveries:
+1. POST http://localhost:${PORT}/api/meetings/check - detect completed meetings
+2. GET http://localhost:${PORT}/api/delivery/pending - check for pending summaries
+3. If pending, generate summary from the prompt and POST to http://localhost:${PORT}/api/delivery/complete
+4. Reply NO_REPLY unless there was an error`,
+        timeoutSeconds: 120
+      },
+      delivery: { mode: 'none' },
+      enabled: true
+    });
+  }
+  
+  res.json({
+    jobs,
+    instructions: 'Use OpenClaw cron tool to install: cron(action=add, job=<job>)'
+  });
+});
+
 // ============ AVATAR ============
 
 /**
