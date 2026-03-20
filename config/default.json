@@ -30,6 +30,17 @@
     "zoom": true,
     "meet": true
   },
+  "delivery": {
+    "mode": "summary",
+    "channels": [],
+    "summaryOptions": {
+      "includeActionItems": true,
+      "includeSpeakerHighlights": true,
+      "includeDecisions": true,
+      "includeFollowUps": true,
+      "maxLength": 0
+    }
+  },
   "webhook": {
     "onMeetingEnd": null,
     "includeTranscript": true,
