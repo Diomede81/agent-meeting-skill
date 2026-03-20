@@ -50,8 +50,9 @@
   },
   "cron": {
     "calendarPollEnabled": true,
-    "calendarPollIntervalMs": 300000,
+    "calendarPollIntervalMs": 60000,
     "meetingCheckEnabled": true,
-    "meetingCheckIntervalMs": 60000
+    "meetingCheckIntervalMs": 60000,
+    "gatewayUrl": "http://localhost:18789"
   }
 }
