@@ -155,21 +155,18 @@ For pulling meeting invitations:
 
 ---
 
-## Summarization (Optional)
+## Summarization & Action Extraction
 
-For auto-generating meeting summaries:
+**NOT handled by this skill.**
 
-### OpenAI GPT-4
-- **Pricing:** $0.03/1K input tokens, $0.06/1K output
-- **Best for:** High-quality summaries
+The skill sends a webhook to the agent when meetings complete. The agent then:
+1. Processes transcript with its own model
+2. Generates summary
+3. Extracts action items
+4. Assigns actions to attendees
+5. Creates follow-up tasks
 
-### Anthropic Claude
-- **Pricing:** Similar to GPT-4
-- **Best for:** Longer transcripts
-
-### Local LLM (Ollama)
-- **Pricing:** Free (your hardware)
-- **Best for:** Privacy-conscious, self-hosted
+This keeps the skill focused on capture, while the agent (with full context about people, projects, and history) handles intelligent processing.
 
 ---
 
@@ -182,8 +179,9 @@ For most users, we recommend:
 | Meeting Bot | Recall.ai | $10 |
 | Transcription | Recall built-in | $3 |
 | Calendar | Microsoft Middleware | Free (self-hosted) |
-| Summarization | OpenAI GPT-4 | ~$1 |
-| **Total** | | **~$14/month** |
+| **Total** | | **~$13/month** |
+
+Summarization handled by agent's existing model (no additional cost).
 
 ### Budget Alternative:
 
@@ -192,7 +190,6 @@ For most users, we recommend:
 | Meeting Bot | Skribby | $7 |
 | Transcription | Deepgram (BYOK) | $5.20 |
 | Calendar | Microsoft Middleware | Free |
-| Summarization | Local Ollama | Free |
 | **Total** | | **~$12/month** |
 
 ---

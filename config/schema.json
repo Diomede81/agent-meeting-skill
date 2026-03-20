@@ -140,12 +140,33 @@
           "title": "File Name Pattern",
           "description": "Pattern for transcript filenames. Use {date}, {title}, {time}",
           "default": "{date}_{title}"
+        }
+      }
+    },
+    "webhook": {
+      "type": "object",
+      "title": "Agent Webhook",
+      "description": "Notify agent when meeting ends for summarization and action extraction",
+      "properties": {
+        "onMeetingEnd": {
+          "type": "string",
+          "title": "Webhook URL",
+          "description": "URL to POST when meeting completes (e.g., http://localhost:18789/webhook/meeting-complete)",
+          "format": "uri"
         },
-        "autoSummarize": {
+        "includeTranscript": {
           "type": "boolean",
-          "title": "Auto-Summarize",
-          "description": "Generate AI summary of meeting",
+          "title": "Include Full Transcript",
+          "description": "Send full transcript in webhook payload (vs just file path)",
           "default": true
+        },
+        "retryCount": {
+          "type": "integer",
+          "title": "Retry Count",
+          "description": "Number of retry attempts if webhook fails",
+          "default": 3,
+          "minimum": 0,
+          "maximum": 10
         }
       }
     },

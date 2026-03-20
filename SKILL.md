@@ -61,6 +61,40 @@ Automated meeting attendance, transcription, and note-taking for AI agents.
 | GET | /api/status | Skill health and current state |
 | GET | /api/transcript/live | Live transcript (SSE stream) |
 
+### Webhooks (Agent Notification)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | /api/webhook/configure | Set webhook URL for notifications |
+| GET | /api/webhook | Get current webhook config |
+
+**Webhook Payload (sent to agent on meeting end):**
+```json
+{
+  "event": "meeting.completed",
+  "meeting": {
+    "id": "abc123",
+    "title": "Weekly Standup",
+    "date": "2026-03-20T10:00:00Z",
+    "duration": 2700,
+    "platform": "teams",
+    "attendees": ["Luca", "Masum", "Austin"]
+  },
+  "transcript": {
+    "path": "meetings/2026-03-20_weekly-standup.md",
+    "speakerCount": 3,
+    "wordCount": 4521
+  },
+  "raw": "..." // Full transcript if includeTranscript=true
+}
+```
+
+The agent receives this webhook and processes with its own model for:
+- Summary generation
+- Action item extraction
+- Task assignment
+- Follow-up scheduling
+
 ### Credentials
 
 | Method | Endpoint | Description |
@@ -98,16 +132,35 @@ Automated meeting attendance, transcription, and note-taking for AI agents.
   },
   "storage": {
     "transcriptFormat": "markdown",
-    "fileNamePattern": "{date}_{title}",
-    "autoSummarize": true
+    "fileNamePattern": "{date}_{title}"
   },
   "platforms": {
     "teams": true,
     "zoom": true,
     "meet": true
+  },
+  "webhook": {
+    "onMeetingEnd": "http://localhost:18789/webhook/meeting-complete",
+    "includeTranscript": true
   }
 }
 ```
+
+## Agent Integration (Important)
+
+**The skill does NOT summarize or extract actions.** It provides:
+1. Raw transcript with speaker identification
+2. Meeting metadata (title, date, attendees, duration)
+3. Webhook notification when meeting ends
+
+**The agent handles:**
+- Summarization (using its own model)
+- Action item extraction
+- Action allocation to attendees
+- Follow-up task creation
+- Context-aware processing (knows people, projects, history)
+
+This separation keeps the skill focused and lets the agent use its full context.
 
 ## Credential Management
 
@@ -222,4 +275,4 @@ agent-meeting-skill/
 - [ ] Meeting end detection
 - [ ] Transcript saving
 - [ ] Live transcript SSE
-- [ ] Auto-summarization
+- [ ] Webhook notification to agent
